@@ -1,0 +1,284 @@
+name: Build and Push Multi-Arch Docker Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag version (e.g., v1.0.0, latest)'
+        required: true
+        default: 'latest'
+
+      # IM channel SDKs — install the ones you need via pip extras (comma-separated).
+      # Select below; checked = installed. Defaults: feishu, telegram.
+      install_feishu:
+        description: 'Install Feishu channel SDK (lark-oapi)'
+        required: false
+        default: true
+        type: boolean
+
+      install_telegram:
+        description: 'Install Telegram channel SDK (python-telegram-bot)'
+        required: false
+        default: true
+        type: boolean
+
+      install_dingtalk:
+        description: 'Install DingTalk channel SDK (dingtalk-stream)'
+        required: false
+        default: false
+        type: boolean
+
+      install_discord:
+        description: 'Install Discord channel SDK (discord.py)'
+        required: false
+        default: false
+        type: boolean
+
+      install_slack:
+        description: 'Install Slack channel SDK (slack-sdk)'
+        required: false
+        default: false
+        type: boolean
+
+      install_whatsapp:
+        description: 'Install WhatsApp channel SDK (neonize)'
+        required: false
+        default: false
+        type: boolean
+
+      install_matrix:
+        description: 'Install Matrix channel SDK (matrix-nio)'
+        required: false
+        default: false
+        type: boolean
+
+      install_msteams:
+        description: 'Install MS Teams channel SDK (PyJWT + cryptography)'
+        required: false
+        default: false
+        type: boolean
+
+      install_qq:
+        description: 'Install QQ channel SDK (qq-botpy)'
+        required: false
+        default: false
+        type: boolean
+
+      install_wecom:
+        description: 'Install WeCom channel SDK (wecom-aibot-sdk)'
+        required: false
+        default: false
+        type: boolean
+
+      install_weixin:
+        description: 'Install WeChat channel SDK (qrcode)'
+        required: false
+        default: false
+        type: boolean
+
+      install_signal:
+        description: 'Install Signal channel SDK (signal-cli-rest)'
+        required: false
+        default: false
+        type: boolean
+
+      install_email:
+        description: 'Install Email channel SDK (imaplib/smtplib built-in)'
+        required: false
+        default: false
+        type: boolean
+
+      install_mochat:
+        description: 'Install MoChat channel SDK (msgpack + socketio)'
+        required: false
+        default: false
+        type: boolean
+
+      install_napcat:
+        description: 'Install NapCat (QQ) channel SDK (aiohttp + websockets)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  GHCR_REGISTRY: ghcr.io
+  DOCKERHUB_REGISTRY: docker.io
+  GHCR_IMAGE_NAME: ${{ github.repository }}
+  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compute extra dependencies
+        id: extras
+        env:
+          FEISHU: ${{ inputs.install_feishu }}
+          TELEGRAM: ${{ inputs.install_telegram }}
+          DINGTALK: ${{ inputs.install_dingtalk }}
+          DISCORD: ${{ inputs.install_discord }}
+          SLACK: ${{ inputs.install_slack }}
+          WHATSAPP: ${{ inputs.install_whatsapp }}
+          MATRIX: ${{ inputs.install_matrix }}
+          MSTEAMS: ${{ inputs.install_msteams }}
+          QQ: ${{ inputs.install_qq }}
+          WECOM: ${{ inputs.install_wecom }}
+          WEIXIN: ${{ inputs.install_weixin }}
+          SIGNAL: ${{ inputs.install_signal }}
+          EMAIL: ${{ inputs.install_email }}
+          MOCHAT: ${{ inputs.install_mochat }}
+          NAPCAT: ${{ inputs.install_napcat }}
+        run: |
+          set -e
+          # Build a comma-separated list of selected channel names.
+          # Only include a name when its input is "true".
+          extras=()
+          [ "$FEISHU" = "true" ]   && extras+=("feishu")
+          [ "$TELEGRAM" = "true" ] && extras+=("telegram")
+          [ "$DINGTALK" = "true" ] && extras+=("dingtalk")
+          [ "$DISCORD" = "true" ]  && extras+=("discord")
+          [ "$SLACK" = "true" ]    && extras+=("slack")
+          [ "$WHATSAPP" = "true" ] && extras+=("whatsapp")
+          [ "$MATRIX" = "true" ]    && extras+=("matrix")
+          [ "$MSTEAMS" = "true" ]   && extras+=("msteams")
+          [ "$QQ" = "true" ]        && extras+=("qq")
+          [ "$WECOM" = "true" ]     && extras+=("wecom")
+          [ "$WEIXIN" = "true" ]    && extras+=("weixin")
+          [ "$SIGNAL" = "true" ]    && extras+=("signal")
+          [ "$EMAIL" = "true" ]     && extras+=("email")
+          [ "$MOCHAT" = "true" ]    && extras+=("mochat")
+          [ "$NAPCAT" = "true" ]    && extras+=("napcat")
+
+          if [ ${#extras[@]} -eq 0 ]; then
+            VIBE_EXTRAS=""
+          else
+            VIBE_EXTRAS=$(IFS=,; echo "${extras[*]}")
+          fi
+
+          echo "VIBE_EXTRAS=${VIBE_EXTRAS}"
+          echo "VIBE_EXTRAS=${VIBE_EXTRAS}" >> "$GITHUB_ENV"
+          echo "extras_list=${VIBE_EXTRAS}" >> "$GITHUB_OUTPUT"
+
+          echo "Channel selection:"
+          for e in "${extras[@]}"; do echo "  - $e"; done
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:master
+            network=host
+
+      - name: Set up QEMU for multi-platform build
+        uses: docker/setup-qemu-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKERHUB_REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata for GHCR
+        id: meta-ghcr
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ inputs.image_tag }}
+            type=raw,value=latest,enable=${{ inputs.image_tag != 'latest' }}
+          flavor: |
+            latest=true
+
+      - name: Extract metadata for Docker Hub
+        id: meta-dockerhub
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ inputs.image_tag }}
+            type=raw,value=latest,enable=${{ inputs.image_tag != 'latest' }}
+          flavor: |
+            latest=true
+
+      - name: Build and push multi-arch images
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfilefix
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.meta-ghcr.outputs.tags }}
+            ${{ steps.meta-dockerhub.outputs.tags }}
+          labels: ${{ steps.meta-ghcr.outputs.labels }}
+          build-args: |
+            VIBE_EXTRAS=${{ env.VIBE_EXTRAS }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Update Docker Hub repository description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKERHUB_IMAGE_NAME }}
+          readme-filepath: ./README.md
+          short-description: "Natural-language finance research AI agent with backtesting"
+
+      - name: Generate summary
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          GHCR_IMAGE: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}
+          DOCKERHUB_IMAGE: ${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}
+          SELECTED_EXTRAS: ${{ steps.extras.outputs.extras_list }}
+        run: |
+          if [ "$IMAGE_TAG" = "latest" ]; then
+            TAGS_DISPLAY="$IMAGE_TAG"
+          else
+            TAGS_DISPLAY="$IMAGE_TAG, latest"
+          fi
+
+          echo "### Docker Images Built and Pushed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**GitHub Container Registry (GHCR):**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`$GHCR_IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Tags: $TAGS_DISPLAY" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Docker Hub:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`$DOCKERHUB_IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Tags: $TAGS_DISPLAY" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Platforms:** linux/amd64, linux/arm64" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$SELECTED_EXTRAS" ]; then
+            echo "**Installed channel extras:** $SELECTED_EXTRAS" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**Channel extras:** none (core only)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '### Pull Commands:' >> "$GITHUB_STEP_SUMMARY"
+          echo '**GHCR:**' >> "$GITHUB_STEP_SUMMARY"
+          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
+          echo "docker pull $GHCR_IMAGE:$IMAGE_TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '**Docker Hub:**' >> "$GITHUB_STEP_SUMMARY"
+          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
+          echo "docker pull $DOCKERHUB_IMAGE:$IMAGE_TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
