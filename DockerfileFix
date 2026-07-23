@@ -31,10 +31,10 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 WORKDIR /app
 
-# Python deps first for layer caching.
+# Python deps first for layer caching. Use requirements.txt (not the lock
+# file) because the upstream lock has a caio/aiofile conflict.
 COPY agent/requirements.txt agent/requirements.txt
-COPY requirements-lock.txt requirements-lock.txt
-RUN pip install --no-cache-dir --require-hashes -r requirements-lock.txt
+RUN pip install --no-cache-dir -r agent/requirements.txt
 
 # Copy project + install the CLI entrypoint (editable).
 COPY pyproject.toml LICENSE README.md ./
