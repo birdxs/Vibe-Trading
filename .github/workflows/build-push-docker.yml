@@ -89,7 +89,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ env.DOCKERHUB_IMAGE_NAME }}
           readme-filepath: ./README.md
-          short-description: "Natural-language finance research AI agent with backtesting"
+          short-description: "AI trading agent with backtesting. Includes Telegram & Feishu channels."
 
       - name: Summary
         run: |
