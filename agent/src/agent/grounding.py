@@ -176,6 +176,22 @@ _NUMBER_RE = re.compile(
     r"(?<![A-Za-z0-9_])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
     r"(?![A-Za-z0-9_])"
 )
+# A line-leading ordered-list marker ("1. **标题**") is prose structure, not a
+# number. Without masking it, "1." is parsed as a float and rejected downstream
+# as a numeric_claim_conflict against an observed OHLC range (#BUGS-1). The
+# pattern only matches a digit run at the start of a line followed by "." or ")"
+# and whitespace, so an in-text decimal like "1.5" (digit after the dot) is
+# never affected.
+_MD_LIST_ITEM_RE = re.compile(r"^\s*\d+[.)]\s+", re.MULTILINE)
+# Unitless identity constants in a symbolic rate formula are not quoted prices.
+# Without this mask, ``1 - 单边成本率`` in a position-sizing formula is read as
+# a one-yuan price merely because the same clause also mentions a close price.
+# Keep the relaxation narrow: only 0/1 directly participating in arithmetic
+# with a token explicitly labelled as a rate is removed.
+_RATE_FORMULA_IDENTITY_RE = re.compile(
+    r"\b[01](?=\s*[-+]\s*(?:[A-Za-z_][A-Za-z0-9_]*_?rate\b|[^\d\s()+*/=-]{0,12}(?:成本率|费率|税率|滑点率)))",
+    re.IGNORECASE,
+)
 _DATE_RE = re.compile(r"\b(?:19|20)\d{2}[-/]\d{1,2}[-/]\d{1,2}\b")
 # A year-less "8/5" is how a trading day is written in running prose, and it
 # contributed 8 and 5 as candidate prices (#983). The month and day ranges are
@@ -2089,7 +2105,9 @@ class GroundingLedger:
         Returns:
             Candidate price values, in order of appearance.
         """
-        masked = _CANONICAL_SYMBOL_RE.sub(" ", text)
+        masked = _MD_LIST_ITEM_RE.sub(" ", text)
+        masked = _RATE_FORMULA_IDENTITY_RE.sub(" ", masked)
+        masked = _CANONICAL_SYMBOL_RE.sub(" ", masked)
         masked = _LOCALIZED_DATE_RE.sub(" ", masked)
         masked = _DATE_RE.sub(" ", masked)
         masked = _SHORT_DATE_RE.sub(" ", masked)
